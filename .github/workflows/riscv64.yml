@@ -1,0 +1,83 @@
+name: Build RISC-V 64
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - master
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+  # Tell Cargo how to link RISC-V binaries
+  CARGO_TARGET_RISCV64GC_UNKNOWN_LINUX_GNU_LINKER: riscv64-linux-gnu-gcc
+
+  # Also cover crates that compile C/C++ code
+  CC_riscv64gc_unknown_linux_gnu: riscv64-linux-gnu-gcc
+  CXX_riscv64gc_unknown_linux_gnu: riscv64-linux-gnu-g++
+  AR_riscv64gc_unknown_linux_gnu: riscv64-linux-gnu-ar
+
+jobs:
+  build-riscv64:
+    name: Build Linux RISC-V 64
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          submodules: recursive
+
+      - name: Install RISC-V cross compiler
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            gcc-riscv64-linux-gnu \
+            g++-riscv64-linux-gnu \
+            libc6-dev-riscv64-cross
+
+      - name: Install Rust target
+        run: |
+          rustup update stable
+          rustup default stable
+          rustup target add riscv64gc-unknown-linux-gnu
+
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
+
+      - name: Show toolchain information
+        run: |
+          rustc -Vv
+          cargo -V
+          riscv64-linux-gnu-gcc --version
+          rustc --print cfg --target riscv64gc-unknown-linux-gnu
+
+      - name: Build Pumpkin
+        run: |
+          cargo build \
+            --verbose \
+            --release \
+            --target riscv64gc-unknown-linux-gnu
+
+      - name: Inspect binary
+        run: |
+          file target/riscv64gc-unknown-linux-gnu/release/pumpkin
+          riscv64-linux-gnu-readelf -h \
+            target/riscv64gc-unknown-linux-gnu/release/pumpkin
+
+      - name: Prepare artifact
+        run: |
+          mkdir -p dist
+          cp \
+            target/riscv64gc-unknown-linux-gnu/release/pumpkin \
+            dist/pumpkin-riscv64-linux
+
+      - name: Upload RISC-V executable
+        uses: actions/upload-artifact@v7
+        with:
+          name: pumpkin-riscv64-linux
+          compression-level: 9
+          path: dist/pumpkin-riscv64-linux
